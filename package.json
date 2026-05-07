@@ -1,0 +1,52 @@
+{
+  "name": "llm-agent",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "generate": "npm run build && node dist/index.js",
+    "generate:file": "npm run build && node dist/index.js file",
+    "test": "node dist/index.js test",
+    "fix": "node dist/index.js fix",
+    "fix-file": "node dist/index.js fix-file",
+    "list-models": "node dist/index.js list-models",
+    "dev": "ts-node src/index.ts",
+    "agent-build": "npm run build && npm run generate && npm run test && npm run fix"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@babel/generator": "^7.29.1",
+    "@babel/parser": "^7.29.3",
+    "@babel/traverse": "^7.29.0",
+    "@babel/types": "^7.29.0",
+    "fs-extra": "^11.3.5",
+    "glob": "^13.0.6",
+    "ollama": "^0.6.3",
+    "react": "^19.2.6"
+  },
+  "devDependencies": {
+    "@babel/preset-env": "^7.29.5",
+    "@babel/preset-react": "^7.28.5",
+    "@babel/preset-typescript": "^7.28.5",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/babel__generator": "^7.27.0",
+    "@types/babel__parser": "^7.1.5",
+    "@types/babel__traverse": "^7.28.0",
+    "@types/fs-extra": "^11.0.4",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^25.6.0",
+    "@types/react": "^19.2.14",
+    "identity-obj-proxy": "^3.0.0",
+    "jest": "^30.3.0",
+    "jest-environment-jsdom": "^30.3.0",
+    "ts-jest": "^29.4.9",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.3"
+  }
+}

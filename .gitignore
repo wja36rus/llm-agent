@@ -1,0 +1,202 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Build outputs
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# TypeScript
+*.ts.map
+*.js.map
+*.d.ts.map
+
+# Test coverage
+coverage/
+.nyc_output/
+*.lcov
+
+# Test results
+test-results/
+jest_html_reporters/
+
+# IDE and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.project
+.classpath
+.settings/
+*.sublime-*
+*.code-workspace
+
+# OS files
+Thumbs.db
+.DS_Store
+.directory
+*.log
+
+# Environment files
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+
+# Debug logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+.nyc_output/
+
+# Dependency directories
+jspm_packages/
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# parcel-bundler cache
+.cache
+.parcel-cache
+
+# next.js build output
+.next
+
+# nuxt.js build output
+.nuxt
+
+# vuepress build output
+.vuepress/dist
+
+# Serverless directories
+.serverless/
+
+# FuseBox cache
+.fusebox/
+
+# DynamoDB Local files
+.dynamodb/
+
+# TernJS port file
+.tern-port
+
+# Stores VSCode versions used for testing
+.vscode-test/
+
+# yarn v2
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+*/**/.pnp.*
+**/.pnp.*
+
+# TypeScript output
+*.js
+*.js.map
+*.d.ts
+!*.config.js
+!*.config.cjs
+!jest.config.js
+!babel.config.js
+!*.test.js
+!*.spec.js
+
+# But keep type declaration files
+!*.d.ts
+!**/__tests__/**/*.ts
+!**/__tests__/**/*.tsx
+
+# Temporary folders
+tmp/
+temp/
+*.tmp
+
+# Backup files
+*.backup
+*.backup.*
+.bak/
+
+# Generated test files backups
+**/__tests__/*.backup.*
+**/__tests__/*.test.ts.backup.*
+**/__tests__/*.test.tsx.backup.*
+
+# Ollama files
+ollama_models/
+.ollama/
+
+# Project specific
+generated-tests-report.json
+test-fix-report.json
+
+# Performance profiling files
+profile.txt
+火焰图/
+
+# Certificates
+*.pem
+*.crt
+*.key
+
+# Local configuration files
+config.local.ts
+config.local.js
+.env.secrets
+
+# Logs from test runner
+test-runner-logs/
+*.test-log
+
+# IDE specific
+.vscode/settings.json
+.idea/workspace.xml
+*.iml
+
+# Windows
+desktop.ini
+$RECYCLE.BIN/
+
+# Mac
+.AppleDouble
+.LSOverride
+._*
+
+# Linux
+*~
+.directory
