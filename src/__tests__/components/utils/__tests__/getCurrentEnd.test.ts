@@ -14,11 +14,19 @@ describe('getCurrentEnd', () => {
     expect(getCurrentEnd('a')).toBe('a');
   });
 
-  it('returns undefined for null input', () => {
-    expect(getCurrentEnd(null as any)).toBe(undefined);
+  it('returns the last element of an array', () => {
+    expect(getCurrentEnd([1, 2, 3])).toBe(3);
   });
 
-  it('returns undefined for undefined input', () => {
-    expect(getCurrentEnd(undefined as any)).toBe(undefined);
+  it('returns the last property of an object', () => {
+    expect(getCurrentEnd({ a: 1, b: 2, c: 3 })).toBe(3);
+  });
+
+  it('handles null input', () => {
+    expect(getCurrentEnd(null)).toBe(undefined);
+  });
+
+  it('handles undefined input', () => {
+    expect(getCurrentEnd(undefined)).toBe(undefined);
   });
 });
