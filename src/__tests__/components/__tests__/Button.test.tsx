@@ -17,13 +17,13 @@ describe('Button Component', () => {
     expect(handleClick).toHaveBeenCalledTimes(1);
   });
 
-  it('renders disabled button', () => {
-    render(<Button disabled>Click me</Button>);
+  it('renders button with disabled prop', () => {
+    render(<Button disabled>Disabled Button</Button>);
     expect(screen.getByRole('button')).toBeDisabled();
   });
 
-  it('renders with custom class name', () => {
-    render(<Button className="custom-class">Click me</Button>);
+  it('renders button with custom class name', () => {
+    render(<Button className="custom-class">Custom Class Button</Button>);
     expect(screen.getByRole('button')).toHaveClass('btn custom-class');
   });
 });
