@@ -14,7 +14,7 @@ export interface ValidationResult {
 }
 
 export class TestValidator {
-  async validateTest(testCode: string, testPath: string): Promise<ValidationResult> {
+  async validateTest(testCode: string): Promise<ValidationResult> {
     const result: ValidationResult = {
       isValid: true,
       errors: [],
@@ -94,11 +94,6 @@ export class TestValidator {
   }
 
   private validateImports(code: string, result: ValidationResult): void {
-    const requiredImports = [
-      { pattern: /from ['"]vitest['"]/, name: 'vitest' },
-      { pattern: /from ['"]@testing-library\/react['"]/, name: '@testing-library/react' },
-    ];
-
     if (code.includes('render(') || code.includes('screen.')) {
       if (!code.includes('@testing-library/react')) {
         result.errors.push('Missing import: @testing-library/react');

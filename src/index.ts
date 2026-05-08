@@ -1,11 +1,11 @@
-import * as fs from 'fs-extra';
-import * as path from 'path';
+import * as fs from "fs-extra";
+import * as path from "path";
 
-import { ComponentAnalyzer, FunctionInfo } from './ollama/analyzer';
-import { OllamaClient } from './ollama/ollamaClient';
-import { PromptGenerator } from './ollama/promptGenerator';
-import { TestRunner } from './ollama/testRunner';
-import { TestValidator } from './ollama/testValidator';
+import { ComponentAnalyzer, FunctionInfo } from "./ollama/analyzer";
+import { OllamaClient } from "./ollama/ollamaClient";
+import { PromptGenerator } from "./ollama/promptGenerator";
+import { TestRunner } from "./ollama/testRunner";
+import { TestValidator } from "./ollama/testValidator";
 
 interface Config {
   componentsDir: string;
@@ -17,7 +17,7 @@ interface Config {
   maxFixAttempts?: number;
   skipPassingTests?: boolean;
   forceGenerate?: boolean;
-  testPlacement?: 'separate' | 'adjacent'; // Новая опция: separate (в __tests__) или adjacent (рядом)
+  testPlacement?: "separate" | "adjacent"; // Новая опция: separate (в __tests__) или adjacent (рядом)
   validateTests?: boolean;
 }
 
@@ -40,31 +40,32 @@ class TestGenerator {
 
     this.config = {
       ...config,
-      testPlacement: config.testPlacement || 'separate', // По умолчанию отдельная папка
-      validateTests: config.validateTests !== undefined ? config.validateTests : true,
+      testPlacement: config.testPlacement || "separate", // По умолчанию отдельная папка
+      validateTests:
+        config.validateTests !== undefined ? config.validateTests : true,
       excludePatterns: config.excludePatterns || [
-        '**/*.test.*',
-        '**/*.spec.*',
-        '**/node_modules/**',
-        '**/dist/**',
-        '**/build/**',
-        '**/coverage/**',
-        '**/.git/**',
-        '**/__tests__/**',
-        '**/examples/**',
-        '**/*.d.ts',
-        '**/*.config.*',
-        '**/setupTests.*',
-        '**/reportWebVitals.*',
-        '**/index.*',
-        '**/main.*',
+        "**/*.test.*",
+        "**/*.spec.*",
+        "**/node_modules/**",
+        "**/dist/**",
+        "**/build/**",
+        "**/coverage/**",
+        "**/.git/**",
+        "**/__tests__/**",
+        "**/examples/**",
+        "**/*.d.ts",
+        "**/*.config.*",
+        "**/setupTests.*",
+        "**/reportWebVitals.*",
+        "**/index.*",
+        "**/main.*",
       ],
     };
     if (config.skipPassingTests || config.autoFix) {
       this.testRunner = new TestRunner(
         config.model,
         config.maxFixAttempts || 3,
-        config.testPlacement || 'separate', // Передаем стратегию размещения
+        config.testPlacement || "separate", // Передаем стратегию размещения
       );
     }
   }
@@ -73,31 +74,31 @@ class TestGenerator {
   private isGeneratorFile(filePath: string): boolean {
     const fileName = path.basename(filePath);
     const generatorFiles = [
-      'analyzer.ts',
-      'analyzer.js',
-      'ollamaClient.ts',
-      'ollamaClient.js',
-      'promptGenerator.ts',
-      'promptGenerator.js',
-      'testRunner.ts',
-      'testRunner.js',
-      'index.ts',
-      'index.js',
-      'config.ts',
-      'config.js',
+      "analyzer.ts",
+      "analyzer.js",
+      "ollamaClient.ts",
+      "ollamaClient.js",
+      "promptGenerator.ts",
+      "promptGenerator.js",
+      "testRunner.ts",
+      "testRunner.js",
+      "index.ts",
+      "index.js",
+      "config.ts",
+      "config.js",
     ];
 
     if (generatorFiles.includes(fileName)) {
       return true;
     }
 
-    const normalizedPath = filePath.replace(/\\/g, '/');
+    const normalizedPath = filePath.replace(/\\/g, "/");
     if (
-      normalizedPath.includes('/test-generator/') ||
-      normalizedPath.includes('/tools/') ||
-      normalizedPath.includes('/scripts/') ||
-      normalizedPath.includes('/generator/') ||
-      normalizedPath.includes('/node_modules/')
+      normalizedPath.includes("/test-generator/") ||
+      normalizedPath.includes("/tools/") ||
+      normalizedPath.includes("/scripts/") ||
+      normalizedPath.includes("/generator/") ||
+      normalizedPath.includes("/node_modules/")
     ) {
       return true;
     }
@@ -109,14 +110,16 @@ class TestGenerator {
   private isExcludedByPattern(filePath: string): boolean {
     if (!this.config.excludePatterns) return false;
 
-    const relativePath = path.relative(process.cwd(), filePath).replace(/\\/g, '/');
+    const relativePath = path
+      .relative(process.cwd(), filePath)
+      .replace(/\\/g, "/");
 
     for (const pattern of this.config.excludePatterns) {
       const regexPattern = pattern
-        .replace(/\./g, '\\.')
-        .replace(/\*\*/g, '.*')
-        .replace(/\*/g, '[^/]*')
-        .replace(/\?/g, '.');
+        .replace(/\./g, "\\.")
+        .replace(/\*\*/g, ".*")
+        .replace(/\*/g, "[^/]*")
+        .replace(/\?/g, ".");
 
       const regex = new RegExp(regexPattern);
       if (regex.test(relativePath) || regex.test(filePath)) {
@@ -128,7 +131,10 @@ class TestGenerator {
   }
 
   // Проверка, нужно ли генерировать тест
-  private async shouldGenerateTest(filePath: string, funcInfo: FunctionInfo): Promise<boolean> {
+  private async shouldGenerateTest(
+    filePath: string,
+    funcInfo: FunctionInfo,
+  ): Promise<boolean> {
     const testOutputPath = this.getTestOutputPath(filePath, funcInfo);
 
     if (!(await fs.pathExists(testOutputPath))) {
@@ -141,7 +147,10 @@ class TestGenerator {
     }
 
     if (this.config.skipPassingTests && this.testRunner) {
-      const isPassing = await this.testRunner.isTestPassing(testOutputPath, false);
+      const isPassing = await this.testRunner.isTestPassing(
+        testOutputPath,
+        false,
+      );
 
       if (isPassing) {
         console.log(`   ⏭️  Skipping: test already exists and passes`);
@@ -158,12 +167,16 @@ class TestGenerator {
 
   async generateForFile(componentPath: string): Promise<void> {
     if (this.isGeneratorFile(componentPath)) {
-      console.log(`⏭️  Skipping generator file: ${path.basename(componentPath)}`);
+      console.log(
+        `⏭️  Skipping generator file: ${path.basename(componentPath)}`,
+      );
       return;
     }
 
     if (this.isExcludedByPattern(componentPath)) {
-      console.log(`⏭️  Skipping excluded file: ${path.basename(componentPath)}`);
+      console.log(
+        `⏭️  Skipping excluded file: ${path.basename(componentPath)}`,
+      );
       return;
     }
 
@@ -177,10 +190,15 @@ class TestGenerator {
         return;
       }
 
-      console.log(`✅ Found ${functions.length} function(s) in ${path.basename(componentPath)}`);
+      console.log(
+        `✅ Found ${functions.length} function(s) in ${path.basename(componentPath)}`,
+      );
 
       for (const funcInfo of functions) {
-        const generated = await this.generateTestForFunction(componentPath, funcInfo);
+        const generated = await this.generateTestForFunction(
+          componentPath,
+          funcInfo,
+        );
         if (generated) {
           this.generatedTestsCount++;
         }
@@ -193,24 +211,36 @@ class TestGenerator {
 
   // src/index.ts - обновите метод generateTestForFunction
 
-  private async generateTestForFunction(filePath: string, funcInfo: FunctionInfo): Promise<boolean> {
+  private async generateTestForFunction(
+    filePath: string,
+    funcInfo: FunctionInfo,
+  ): Promise<boolean> {
     const shouldGenerate = await this.shouldGenerateTest(filePath, funcInfo);
     if (!shouldGenerate) {
       return false;
     }
 
-    const code = await fs.readFile(filePath, 'utf-8');
+    const code = await fs.readFile(filePath, "utf-8");
 
     const typeIcon =
-      funcInfo.type === 'component' ? '⚛️' : funcInfo.type === 'hook' ? '🪝' : funcInfo.type === 'helper' ? '🔧' : '📦';
+      funcInfo.type === "component"
+        ? "⚛️"
+        : funcInfo.type === "hook"
+          ? "🪝"
+          : funcInfo.type === "helper"
+            ? "🔧"
+            : "📦";
 
-    console.log(`\n${typeIcon} Generating test for ${funcInfo.type}: ${funcInfo.name}`);
     console.log(
-      `   Parameters: ${funcInfo.params.map((p) => `${p.name}${p.optional ? '?' : ''}${p.type ? ': ' + p.type : ''}`).join(', ') || 'none'}`,
+      `\n${typeIcon} Generating test for ${funcInfo.type}: ${funcInfo.name}`,
     );
-    console.log(`   Returns: ${funcInfo.returnType || 'unknown'}`);
+    console.log(
+      `   Parameters: ${funcInfo.params.map((p) => `${p.name}${p.optional ? "?" : ""}${p.type ? ": " + p.type : ""}`).join(", ") || "none"}`,
+    );
+    console.log(`   Returns: ${funcInfo.returnType || "unknown"}`);
     if (funcInfo.isAsync) console.log(`   Async: yes`);
-    if (funcInfo.hooks.length > 0) console.log(`   Hooks: ${funcInfo.hooks.join(', ')}`);
+    if (funcInfo.hooks.length > 0)
+      console.log(`   Hooks: ${funcInfo.hooks.join(", ")}`);
 
     const prompt = this.promptGenerator.generatePrompt(funcInfo, code);
     console.log(`   🤖 Generating test with ${this.config.model}...`);
@@ -230,7 +260,7 @@ class TestGenerator {
     // Валидация сгенерированного теста (если включена)
     if (this.config.validateTests && this.validator) {
       console.log(`   🔍 Validating generated test...`);
-      const validation = await this.validator.validateTest(testCode, outputPath);
+      const validation = await this.validator.validateTest(testCode);
 
       if (!validation.isValid) {
         console.log(`   ⚠️  Test validation failed:`);
@@ -258,7 +288,10 @@ class TestGenerator {
     return true;
   }
 
-  private async fixTestWithLLM(testCode: string, validation: any): Promise<string | null> {
+  private async fixTestWithLLM(
+    testCode: string,
+    validation: any,
+  ): Promise<string | null> {
     const prompt = `Fix the following test code based on validation errors:
 
 CURRENT CODE:
@@ -267,7 +300,7 @@ ${testCode}
 \`\`\`
 
 ERRORS TO FIX:
-${validation.errors.join('\n')}
+${validation.errors.join("\n")}
 
 REQUIREMENTS:
 1. Add missing imports
@@ -280,7 +313,7 @@ Return ONLY the fixed test code.`;
     try {
       const fixed = await this.ollama.generate(prompt);
       return this.extractTestCode(fixed);
-    } catch (error) {
+    } catch (_error) {
       return null;
     }
   }
@@ -288,7 +321,9 @@ Return ONLY the fixed test code.`;
   async generateForDirectory(): Promise<void> {
     const files = await this.findAllSourceFiles();
 
-    console.log(`\n🔍 Found ${files.length} source files in ${this.config.componentsDir}`);
+    console.log(
+      `\n🔍 Found ${files.length} source files in ${this.config.componentsDir}`,
+    );
 
     const filteredFiles = files.filter((file) => {
       if (this.isGeneratorFile(file)) return false;
@@ -296,7 +331,9 @@ Return ONLY the fixed test code.`;
       return true;
     });
 
-    console.log(`📝 Will process ${filteredFiles.length} files for test generation`);
+    console.log(
+      `📝 Will process ${filteredFiles.length} files for test generation`,
+    );
 
     if (this.config.skipPassingTests) {
       console.log(`✨ Skip passing tests mode: enabled`);
@@ -307,9 +344,9 @@ Return ONLY the fixed test code.`;
 
     // Показываем стратегию размещения тестов
     const placementStrategy =
-      this.config.testPlacement === 'adjacent'
-        ? '📁 Test placement: adjacent (next to source files)'
-        : '📁 Test placement: separate (in __tests__ folders)';
+      this.config.testPlacement === "adjacent"
+        ? "📁 Test placement: adjacent (next to source files)"
+        : "📁 Test placement: separate (in __tests__ folders)";
     console.log(placementStrategy);
 
     if (filteredFiles.length === 0) {
@@ -321,16 +358,18 @@ Return ONLY the fixed test code.`;
       await this.generateForFile(file);
     }
 
-    console.log(`\n${'='.repeat(60)}`);
+    console.log(`\n${"=".repeat(60)}`);
     console.log(`📊 GENERATION SUMMARY`);
-    console.log(`${'='.repeat(60)}`);
+    console.log(`${"=".repeat(60)}`);
     console.log(`✅ Tests generated: ${this.generatedTestsCount}`);
     console.log(`⏭️  Tests skipped: ${this.skippedTests.length}`);
     console.log(`❌ Failed: ${this.failedGenerations.length}`);
 
     if (this.skippedTests.length > 0) {
       console.log(`\n⏭️  Skipped tests (already passing):`);
-      this.skippedTests.slice(0, 5).forEach((file) => console.log(`  - ${path.basename(file)}`));
+      this.skippedTests
+        .slice(0, 5)
+        .forEach((file) => console.log(`  - ${path.basename(file)}`));
       if (this.skippedTests.length > 5) {
         console.log(`  ... and ${this.skippedTests.length - 5} more`);
       }
@@ -344,7 +383,7 @@ Return ONLY the fixed test code.`;
     if (this.config.autoFix && this.testRunner) {
       console.log(`\n🚀 Auto-fix mode enabled, running tests...`);
       const outputDir =
-        this.config.testPlacement === 'adjacent'
+        this.config.testPlacement === "adjacent"
           ? this.config.componentsDir // При adjacent стратегии тесты в той же папке
           : this.config.outputDir; // При separate стратегии тесты в outputDir
 
@@ -360,8 +399,10 @@ Return ONLY the fixed test code.`;
   }
 
   private async findAllSourceFiles(): Promise<string[]> {
-    const { glob } = await import('glob');
-    const patterns = this.config.extensions.map((ext) => `${this.config.componentsDir}/**/*.${ext}`);
+    const { glob } = await import("glob");
+    const patterns = this.config.extensions.map(
+      (ext) => `${this.config.componentsDir}/**/*.${ext}`,
+    );
 
     try {
       const files = await glob(patterns, {
@@ -372,13 +413,14 @@ Return ONLY the fixed test code.`;
       });
       return files.sort();
     } catch (error) {
-      console.error('Error finding source files:', error);
+      console.error("Error finding source files:", error);
       return [];
     }
   }
 
   private extractTestCode(generatedText: string): string {
-    const codeBlockRegex = /```(?:tsx|jsx|typescript|javascript|react)?\n([\s\S]*?)```/;
+    const codeBlockRegex =
+      /```(?:tsx|jsx|typescript|javascript|react)?\n([\s\S]*?)```/;
     const match = generatedText.match(codeBlockRegex);
 
     if (match && match[1]) {
@@ -400,34 +442,47 @@ Return ONLY the fixed test code.`;
   }
 
   private cleanTestCode(code: string): string {
-    let cleaned = code.replace(/\/\/\s*Explanation:.*$/gm, '');
-    cleaned = cleaned.replace(/\/\*\*[\s\S]*?\*\//g, '');
+    let cleaned = code.replace(/\/\/\s*Explanation:.*$/gm, "");
+    cleaned = cleaned.replace(/\/\*\*[\s\S]*?\*\//g, "");
     cleaned = cleaned.trim();
     return cleaned;
   }
 
-  private postProcessTest(testCode: string, funcInfo: FunctionInfo, originalFilePath: string): string {
+  private postProcessTest(
+    testCode: string,
+    funcInfo: FunctionInfo,
+    originalFilePath: string,
+  ): string {
     let processed = testCode;
 
     const relativePath = this.getRelativeImportPath(originalFilePath, funcInfo);
 
-    if (funcInfo.type === 'component') {
+    if (funcInfo.type === "component") {
       // Добавляем импорт для Vitest
-      if (!processed.includes('from "vitest"') && !processed.includes("from 'vitest'")) {
+      if (
+        !processed.includes('from "vitest"') &&
+        !processed.includes("from 'vitest'")
+      ) {
         const vitestImport = `import { describe, it, expect, vi } from 'vitest';\n`;
         processed = vitestImport + processed;
       }
 
-      if (!processed.includes('@testing-library/jest-dom')) {
+      if (!processed.includes("@testing-library/jest-dom")) {
         const jestDomImport = `import '@testing-library/jest-dom/vitest';\n`;
         if (processed.includes('from "@testing-library/react"')) {
-          processed = processed.replace(/(import.*from '@testing-library\/react'.*\n)/, `$1${jestDomImport}`);
+          processed = processed.replace(
+            /(import.*from '@testing-library\/react'.*\n)/,
+            `$1${jestDomImport}`,
+          );
         } else {
           processed = jestDomImport + processed;
         }
       }
 
-      if (!processed.includes('import React') && !processed.includes('import { React')) {
+      if (
+        !processed.includes("import React") &&
+        !processed.includes("import { React")
+      ) {
         const reactImport = `import React from 'react';\n`;
         processed = reactImport + processed;
       }
@@ -439,11 +494,14 @@ Return ONLY the fixed test code.`;
       );
 
       // Заменяем jest на vi
-      processed = processed.replace(/jest\.fn\(\)/g, 'vi.fn()');
-      processed = processed.replace(/jest\./g, 'vi.');
+      processed = processed.replace(/jest\.fn\(\)/g, "vi.fn()");
+      processed = processed.replace(/jest\./g, "vi.");
     } else {
       // Для утилит
-      if (!processed.includes('from "vitest"') && !processed.includes("from 'vitest'")) {
+      if (
+        !processed.includes('from "vitest"') &&
+        !processed.includes("from 'vitest'")
+      ) {
         const vitestImport = `import { describe, it, expect } from 'vitest';\n\n`;
         processed = vitestImport + processed;
       }
@@ -459,24 +517,26 @@ Return ONLY the fixed test code.`;
       }
     }
 
-    if (funcInfo.isAsync && !processed.includes('async')) {
-      processed = processed.replace(/it\(/g, 'it(async ');
+    if (funcInfo.isAsync && !processed.includes("async")) {
+      processed = processed.replace(/it\(/g, "it(async ");
     }
 
     return processed;
   }
 
-  private getRelativeImportPath(originalFilePath: string, funcInfo: FunctionInfo): string {
+  private getRelativeImportPath(
+    originalFilePath: string,
+    funcInfo: FunctionInfo,
+  ): string {
     const testOutputPath = this.getTestOutputPath(originalFilePath, funcInfo);
     const testDir = path.dirname(testOutputPath);
-    const originalDir = path.dirname(originalFilePath);
 
     let relativePath = path.relative(testDir, originalFilePath);
-    relativePath = relativePath.replace(/\.(tsx|ts|jsx|js)$/, '');
-    relativePath = relativePath.replace(/\\/g, '/');
+    relativePath = relativePath.replace(/\.(tsx|ts|jsx|js)$/, "");
+    relativePath = relativePath.replace(/\\/g, "/");
 
-    if (!relativePath.startsWith('.')) {
-      relativePath = './' + relativePath;
+    if (!relativePath.startsWith(".")) {
+      relativePath = "./" + relativePath;
     }
 
     return relativePath;
@@ -491,10 +551,10 @@ Return ONLY the fixed test code.`;
    */
   private getTestOutputPath(filePath: string, funcInfo: FunctionInfo): string {
     const parsedPath = path.parse(filePath);
-    const extension = funcInfo.type === 'component' ? 'tsx' : 'ts';
+    const extension = funcInfo.type === "component" ? "tsx" : "ts";
     const testFileName = `${parsedPath.name}.test.${extension}`;
 
-    if (this.config.testPlacement === 'adjacent') {
+    if (this.config.testPlacement === "adjacent") {
       // Стратегия: тест рядом с исходным файлом
       // Пример: src/components/Button.tsx -> src/components/Button.test.tsx
       const outputPath = path.join(parsedPath.dir, testFileName);
@@ -502,7 +562,7 @@ Return ONLY the fixed test code.`;
     } else {
       // Стратегия: тест в папке __tests__
       // Пример: src/components/Button.tsx -> src/components/__tests__/Button.test.tsx
-      const testsDir = path.join(parsedPath.dir, '__tests__');
+      const testsDir = path.join(parsedPath.dir, "__tests__");
       const outputPath = path.join(testsDir, testFileName);
       return outputPath;
     }
@@ -518,7 +578,7 @@ Return ONLY the fixed test code.`;
       console.log(`   📋 Created backup: ${path.basename(backupPath)}`);
     }
 
-    await fs.writeFile(filePath, content, 'utf-8');
+    await fs.writeFile(filePath, content, "utf-8");
   }
 }
 
@@ -527,20 +587,29 @@ async function main() {
   const args = process.argv.slice(2);
 
   const config: Config = {
-    componentsDir: args.find((arg) => arg.startsWith('--components='))?.split('=')[1] || './src',
-    outputDir: args.find((arg) => arg.startsWith('--output='))?.split('=')[1] || './src/__tests__',
-    model: args.find((arg) => arg.startsWith('--model='))?.split('=')[1] || 'qwen2.5-coder:7b',
-    extensions: ['tsx', 'jsx', 'ts', 'js'],
+    componentsDir:
+      args.find((arg) => arg.startsWith("--components="))?.split("=")[1] ||
+      "./src",
+    outputDir:
+      args.find((arg) => arg.startsWith("--output="))?.split("=")[1] ||
+      "./src/__tests__",
+    model:
+      args.find((arg) => arg.startsWith("--model="))?.split("=")[1] ||
+      "qwen2.5-coder:7b",
+    extensions: ["tsx", "jsx", "ts", "js"],
     excludePatterns:
       args
-        .find((arg) => arg.startsWith('--exclude='))
-        ?.split('=')[1]
-        ?.split(',') || undefined,
-    autoFix: args.includes('--auto-fix'),
-    maxFixAttempts: parseInt(args.find((arg) => arg.startsWith('--max-attempts='))?.split('=')[1] || '3'),
-    skipPassingTests: args.includes('--skip-passing'),
-    forceGenerate: args.includes('--force'),
-    testPlacement: args.includes('--adjacent') ? 'adjacent' : 'separate',
+        .find((arg) => arg.startsWith("--exclude="))
+        ?.split("=")[1]
+        ?.split(",") || undefined,
+    autoFix: args.includes("--auto-fix"),
+    maxFixAttempts: parseInt(
+      args.find((arg) => arg.startsWith("--max-attempts="))?.split("=")[1] ||
+        "3",
+    ),
+    skipPassingTests: args.includes("--skip-passing"),
+    forceGenerate: args.includes("--force"),
+    testPlacement: args.includes("--adjacent") ? "adjacent" : "separate",
   };
 
   console.log(`
@@ -553,70 +622,90 @@ Configuration:
   Source directory: ${config.componentsDir}
   Output directory: ${config.outputDir}
   Model: ${config.model}
-  Extensions: ${config.extensions.join(', ')}
-  Exclude patterns: ${config.excludePatterns?.join(', ') || 'default'}
-  Auto-fix: ${config.autoFix ? 'enabled' : 'disabled'}
-  Skip passing tests: ${config.skipPassingTests ? 'enabled' : 'disabled'}
-  Force generate: ${config.forceGenerate ? 'enabled' : 'disabled'}
-  Test placement: ${config.testPlacement === 'adjacent' ? 'adjacent (next to source)' : 'separate (__tests__ folder)'}
+  Extensions: ${config.extensions.join(", ")}
+  Exclude patterns: ${config.excludePatterns?.join(", ") || "default"}
+  Auto-fix: ${config.autoFix ? "enabled" : "disabled"}
+  Skip passing tests: ${config.skipPassingTests ? "enabled" : "disabled"}
+  Force generate: ${config.forceGenerate ? "enabled" : "disabled"}
+  Test placement: ${config.testPlacement === "adjacent" ? "adjacent (next to source)" : "separate (__tests__ folder)"}
   Max fix attempts: ${config.maxFixAttempts}
   `);
 
   const generator = new TestGenerator(config);
-  const command = args[0] || 'all';
+  const command = args[0] || "all";
 
   switch (command) {
-    case 'file':
+    case "file":
       const filePath = args[1];
       if (!filePath) {
-        console.error('Please specify file path: npm run generate file src/components/Button.tsx');
+        console.error(
+          "Please specify file path: npm run generate file src/components/Button.tsx",
+        );
         process.exit(1);
       }
       await generator.generateForFile(filePath);
       break;
 
-    case 'list-models':
+    case "list-models":
       const ollama = new OllamaClient();
       const models = await ollama.listModels();
-      console.log('Available models:', models);
+      console.log("Available models:", models);
       break;
 
-    case 'test':
-      const testPath = args[1] || './src';
+    case "test":
+      const testPath = args[1] || "./src";
       const runner = new TestRunner(
         config.model,
         config.maxFixAttempts,
-        config.testPlacement || 'separate', // Передаем стратегию
+        config.testPlacement || "separate", // Передаем стратегию
       );
-      const forceTest = args.includes('--force');
+      const forceTest = args.includes("--force");
       const results = await runner.runAllTests(testPath, forceTest);
       console.log(runner.generateReport(results));
       break;
 
-    case 'fix':
-      const fixPath = args[1] || './src';
-      const sourcePath = args[2] || './src';
+    case "fix":
+      const fixPath = args[1] || "./src";
+      const sourcePath = args[2] || "./src";
       const fixRunner = new TestRunner(config.model, config.maxFixAttempts);
-      const forceFix = args.includes('--force');
-      const fixes = await fixRunner.runAndFixAllTests(fixPath, sourcePath, forceFix);
+      const forceFix = args.includes("--force");
+      const fixes = await fixRunner.runAndFixAllTests(
+        fixPath,
+        sourcePath,
+        forceFix,
+      );
       console.log(await fixRunner.generateFixReport(fixes));
       break;
 
-    case 'fix-file':
+    case "fix-file":
       const testFileToFix = args[1];
       if (!testFileToFix) {
-        console.error('Please specify test file path: npm run fix-file src/components/Button.test.tsx');
+        console.error(
+          "Please specify test file path: npm run fix-file src/components/Button.test.tsx",
+        );
         process.exit(1);
       }
-      const sourceFileForFix = args[2] || './src';
+      const sourceFileForFix = args[2] || "./src";
       const fileRunner = new TestRunner(config.model, config.maxFixAttempts);
-      const forceFixFile = args.includes('--force');
-      const fileFixes = await fileRunner.runAndFix(testFileToFix, sourceFileForFix, forceFixFile);
-      console.log(await fileRunner.generateFixReport(new Map([[testFileToFix, fileFixes]])));
+      const forceFixFile = args.includes("--force");
+      const fileFixes = await fileRunner.runAndFix(
+        testFileToFix,
+        sourceFileForFix,
+        forceFixFile,
+      );
+      console.log(
+        await fileRunner.generateFixReport(
+          new Map([[testFileToFix, fileFixes]]),
+        ),
+      );
       break;
 
-    case 'cache-stats':
-      const cacheRunner = new TestRunner(config.model, 3, config.testPlacement || 'separate');
+    case "cache-stats":
+      const cacheRunner = new TestRunner(
+        config.model,
+        3,
+        config.testPlacement || "separate",
+      );
       const stats = cacheRunner.getCacheStats();
       console.log(`
       📊 Test Cache Statistics:
@@ -631,20 +720,22 @@ Configuration:
         `);
       break;
 
-    case 'clear-cache':
+    case "clear-cache":
       const clearRunner = new TestRunner(config.model);
       clearRunner.clearCache();
-      console.log('✅ Test cache cleared successfully');
+      console.log("✅ Test cache cleared successfully");
       break;
 
-    case 'generate-and-test':
-      console.log('🚀 Starting full pipeline: Generation -> Testing -> Fixing\n');
+    case "generate-and-test":
+      console.log(
+        "🚀 Starting full pipeline: Generation -> Testing -> Fixing\n",
+      );
       await generator.generateForDirectory();
       break;
 
-    case 'help':
-    case '--help':
-    case '-h':
+    case "help":
+    case "--help":
+    case "-h":
       console.log(`
 Usage:
   npm run generate [command] [options]
@@ -700,7 +791,7 @@ Examples:
       `);
       break;
 
-    case 'all':
+    case "all":
     default:
       await generator.generateForDirectory();
       break;
