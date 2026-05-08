@@ -33,29 +33,121 @@ export class TestRunner {
   private ollama: OllamaClient;
   private maxFixAttempts: number;
   private testResults: Map<string, TestResult> = new Map();
+  private testCache: Map<
+    string,
+    { success: boolean; timestamp: number; testPath: string }
+  > = new Map();
+  private cacheFile: string = ".test-cache.json";
 
   constructor(model: string = "qwen2.5-coder:7b", maxFixAttempts: number = 3) {
     this.ollama = new OllamaClient(model);
     this.maxFixAttempts = maxFixAttempts;
+    this.loadCache();
   }
 
-  async runTest(testFilePath: string): Promise<TestResult> {
-    console.log(`\n🧪 Running test: ${path.basename(testFilePath)}`);
+  // Загрузка кэша из файла
+  private loadCache(): void {
+    try {
+      if (fs.existsSync(this.cacheFile)) {
+        const cache = fs.readJsonSync(this.cacheFile);
+        Object.entries(cache).forEach(([key, value]: [string, any]) => {
+          this.testCache.set(key, value);
+        });
+        console.log(`📦 Loaded test cache with ${this.testCache.size} entries`);
+      }
+    } catch (error) {
+      console.log("No existing test cache found");
+    }
+  }
+
+  // Сохранение кэша в файл
+  private saveCache(): void {
+    try {
+      const cache = Object.fromEntries(this.testCache);
+      fs.writeJsonSync(this.cacheFile, cache, { spaces: 2 });
+    } catch (error) {
+      console.error("Failed to save test cache:", error);
+    }
+  }
+
+  // Проверка, нужно ли запускать тест
+  public shouldRunTest(testFilePath: string, force: boolean = false): boolean {
+    if (force) return true;
+
+    const cached = this.testCache.get(testFilePath);
+    if (!cached) return true;
+
+    // Проверяем время последнего успешного прохода (24 часа)
+    const oneDay = 24 * 60 * 60 * 1000;
+    const isRecent = Date.now() - cached.timestamp < oneDay;
+
+    return !(cached.success && isRecent);
+  }
+
+  // Проверка, существует ли тест и проходит ли он
+  public async isTestPassing(
+    testFilePath: string,
+    forceCheck: boolean = false,
+  ): Promise<boolean> {
+    // Проверяем кэш
+    if (!forceCheck) {
+      const cached = this.testCache.get(testFilePath);
+      if (cached && cached.success) {
+        const oneDay = 24 * 60 * 60 * 1000;
+        const isRecent = Date.now() - cached.timestamp < oneDay;
+        if (isRecent) {
+          return true;
+        }
+      }
+    }
+
+    // Если тест не существует, возвращаем false
+    if (!(await fs.pathExists(testFilePath))) {
+      return false;
+    }
+
+    // Запускаем тест для проверки
+    const result = await this.runTest(testFilePath, true);
+    return result.success;
+  }
+
+  async runTest(
+    testFilePath: string,
+    force: boolean = false,
+  ): Promise<TestResult> {
+    // Проверяем кэш
+    if (!force && !this.shouldRunTest(testFilePath, false)) {
+      const cached = this.testCache.get(testFilePath);
+      if (cached && cached.success) {
+        console.log(
+          `   ⏭️  Skipping test (passed recently): ${path.basename(testFilePath)}`,
+        );
+        return {
+          success: true,
+          output: "Cached test result - test passed previously",
+          duration: 0,
+          failedTests: [],
+        };
+      }
+    }
+
+    // Проверяем существование тестового файла
+    if (!(await fs.pathExists(testFilePath))) {
+      const result: TestResult = {
+        success: false,
+        output: "",
+        error: `Test file not found: ${testFilePath}`,
+        failedTests: [],
+        duration: 0,
+      };
+      return result;
+    }
+
+    console.log(`   🧪 Running test: ${path.basename(testFilePath)}`);
 
     const startTime = Date.now();
 
     try {
-      // Проверяем наличие jest
-      try {
-        await execAsync("npx jest --version");
-      } catch (error) {
-        console.log("⚠️  Jest not found. Installing required packages...");
-        await execAsync(
-          "npm install --save-dev jest ts-jest @types/jest @testing-library/jest-dom @testing-library/react @testing-library/user-event jest-environment-jsdom identity-obj-proxy",
-        );
-      }
-
-      // Запускаем тест с полным путем
       const { stdout, stderr } = await execAsync(
         `npx jest "${testFilePath}" --no-coverage --colors --passWithNoTests`,
         {
@@ -74,30 +166,19 @@ export class TestRunner {
         failedTests: [],
       };
 
-      console.log(`✅ Test passed in ${duration}ms`);
+      // Сохраняем в кэш
+      this.testCache.set(testFilePath, {
+        success: true,
+        timestamp: Date.now(),
+        testPath: testFilePath,
+      });
+      this.saveCache();
+
+      console.log(`   ✅ Test passed in ${duration}ms`);
       this.testResults.set(testFilePath, result);
       return result;
     } catch (error: any) {
       const duration = Date.now() - startTime;
-
-      console.log(
-        "Error output:",
-        error.stdout || error.stderr || error.message,
-      );
-
-      // Проверяем специфические ошибки
-      const errorMessage = error.stderr || error.stdout || error.message;
-
-      if (errorMessage.includes("ts-jest not found")) {
-        console.log("⚠️  ts-jest not found. Installing...");
-        await execAsync("npm install --save-dev ts-jest");
-        // Повторяем попытку
-        return this.runTest(testFilePath);
-      }
-
-      if (errorMessage.includes("Cannot find module")) {
-        console.log("⚠️  Missing module. Please run: npm install");
-      }
 
       const failedTests = this.parseFailedTests(
         error.stdout || error.stderr,
@@ -107,12 +188,22 @@ export class TestRunner {
       const result: TestResult = {
         success: false,
         output: error.stdout || "",
-        error: errorMessage,
+        error: error.stderr || error.message,
         failedTests,
         duration,
       };
 
-      console.log(`❌ Test failed in ${duration}ms`);
+      // Сохраняем провал в кэш
+      this.testCache.set(testFilePath, {
+        success: false,
+        timestamp: Date.now(),
+        testPath: testFilePath,
+      });
+      this.saveCache();
+
+      console.log(
+        `   ❌ Test failed in ${duration}ms. ${failedTests.length} test(s) failed`,
+      );
       this.testResults.set(testFilePath, result);
       return result;
     }
@@ -121,16 +212,25 @@ export class TestRunner {
   async runAndFix(
     testFilePath: string,
     originalCodePath?: string,
+    force: boolean = false,
   ): Promise<FixAttempt[]> {
+    // Проверяем, нужно ли запускать тест
+    if (!force && (await this.isTestPassing(testFilePath, false))) {
+      console.log(
+        `   ⏭️  Test already passing, skipping fix: ${path.basename(testFilePath)}`,
+      );
+      return [];
+    }
+
     const attempts: FixAttempt[] = [];
     let currentCode = await fs.readFile(testFilePath, "utf-8");
-    let currentResult = await this.runTest(testFilePath);
+    let currentResult = await this.runTest(testFilePath, true);
 
     for (let i = 1; i <= this.maxFixAttempts; i++) {
-      console.log(`\n🔧 Fix attempt ${i}/${this.maxFixAttempts}`);
+      console.log(`   🔧 Fix attempt ${i}/${this.maxFixAttempts}`);
 
       if (currentResult.success) {
-        console.log(`✅ Test passed successfully!`);
+        console.log(`   ✅ Test passed successfully!`);
         break;
       }
 
@@ -153,7 +253,7 @@ export class TestRunner {
       await fs.writeFile(testFilePath, fixedCode, "utf-8");
 
       // Запускаем тест снова
-      const newResult = await this.runTest(testFilePath);
+      const newResult = await this.runTest(testFilePath, true);
 
       attempt.success = newResult.success;
       if (!newResult.success) {
@@ -163,7 +263,14 @@ export class TestRunner {
       attempts.push(attempt);
 
       if (newResult.success) {
-        console.log(`✅ Test fixed successfully in attempt ${i}!`);
+        console.log(`   ✅ Test fixed successfully in attempt ${i}!`);
+        // Обновляем кэш с успешным результатом
+        this.testCache.set(testFilePath, {
+          success: true,
+          timestamp: Date.now(),
+          testPath: testFilePath,
+        });
+        this.saveCache();
         break;
       }
 
@@ -172,7 +279,7 @@ export class TestRunner {
 
       if (i === this.maxFixAttempts) {
         console.log(
-          `❌ Failed to fix test after ${this.maxFixAttempts} attempts`,
+          `   ❌ Failed to fix test after ${this.maxFixAttempts} attempts`,
         );
       }
     }
@@ -224,7 +331,7 @@ ${testCode}
 ${failedTestsInfo}
 
 ВЫВОД ТЕСТОВ:
-${result.output.slice(0, 2000)} // Ограничиваем вывод
+${result.output.slice(0, 2000)}
 
 ${originalCode}
 
@@ -234,69 +341,14 @@ ${originalCode}
 3. Исправь неправильные селекторы (getByRole, getByText, etc.)
 4. Добавь моки если необходимо
 5. Убедись, что тесты соответствуют API компонента
-6. Не удаляй существующие тесты, только исправляй их
-
-ВАЖНЫЕ НАПРАВЛЕНИЯ ДЛЯ ИСПРАВЛЕНИЙ:
-${this.generateFixSuggestions(result)}
 
 Сгенерируй ИСПРАВЛЕННУЮ ВЕРСИЮ теста. Верни ТОЛЬКО код теста без комментариев.
 
 Исправленный тест:`;
 
     const response = await this.ollama.generate(prompt);
-
-    // Извлекаем код из ответа
     const fixedCode = this.extractCodeFromResponse(response);
     return fixedCode;
-  }
-
-  private generateFixSuggestions(result: TestResult): string {
-    const suggestions: string[] = [];
-
-    for (const test of result.failedTests) {
-      const error = test.error.toLowerCase();
-
-      if (error.includes("not defined") || error.includes("is not defined")) {
-        suggestions.push(
-          `- ${test.name}: Добавить недостающий импорт для ${error.match(/'([^']+)'/)?.[1] || "неизвестного модуля"}`,
-        );
-      }
-
-      if (
-        error.includes("toBeInTheDocument") ||
-        error.includes("toBeDisabled")
-      ) {
-        suggestions.push(
-          `- ${test.name}: Добавить импорт '@testing-library/jest-dom'`,
-        );
-      }
-
-      if (error.includes("Unable to find an element")) {
-        suggestions.push(
-          `- ${test.name}: Исправить селектор элемента. Проверить role, text или testId`,
-        );
-      }
-
-      if (error.includes("received value must be a mock")) {
-        suggestions.push(`- ${test.name}: Добавить jest.fn() для мока функции`);
-      }
-
-      if (error.includes("timeout") || error.includes("async")) {
-        suggestions.push(
-          `- ${test.name}: Добавить async/await или увеличить таймаут`,
-        );
-      }
-
-      if (error.includes("Cannot read properties of undefined")) {
-        suggestions.push(
-          `- ${test.name}: Добавить проверку на undefined/null или мокнуть данные`,
-        );
-      }
-    }
-
-    return suggestions.length > 0
-      ? suggestions.join("\n")
-      : "- Исправить синтаксические ошибки и убедиться в корректности импортов";
   }
 
   private parseFailedTests(output: string, filePath: string): FailedTest[] {
@@ -352,14 +404,17 @@ ${this.generateFixSuggestions(result)}
     return response.trim();
   }
 
-  async runAllTests(testDir: string): Promise<Map<string, TestResult>> {
+  async runAllTests(
+    testDir: string,
+    force: boolean = false,
+  ): Promise<Map<string, TestResult>> {
     const results = new Map<string, TestResult>();
     const testFiles = await this.findTestFiles(testDir);
 
     console.log(`\n🔍 Found ${testFiles.length} test files`);
 
     for (const testFile of testFiles) {
-      const result = await this.runTest(testFile);
+      const result = await this.runTest(testFile, force);
       results.set(testFile, result);
     }
 
@@ -369,13 +424,25 @@ ${this.generateFixSuggestions(result)}
   async runAndFixAllTests(
     testDir: string,
     sourceDir?: string,
+    force: boolean = false,
   ): Promise<Map<string, FixAttempt[]>> {
     const allFixes = new Map<string, FixAttempt[]>();
     const testFiles = await this.findTestFiles(testDir);
 
-    console.log(`\n🔍 Found ${testFiles.length} test files to fix`);
+    console.log(`\n🔍 Found ${testFiles.length} test files to check`);
+
+    let skipped = 0;
+    let toFix = 0;
 
     for (const testFile of testFiles) {
+      if (!force && (await this.isTestPassing(testFile, false))) {
+        console.log(`   ⏭️  Skipping passing test: ${path.basename(testFile)}`);
+        skipped++;
+        continue;
+      }
+
+      toFix++;
+
       // Пытаемся найти исходный файл компонента
       let sourceFile = "";
       if (sourceDir) {
@@ -394,9 +461,19 @@ ${this.generateFixSuggestions(result)}
         }
       }
 
-      const fixes = await this.runAndFix(testFile, sourceFile || undefined);
-      allFixes.set(testFile, fixes);
+      const fixes = await this.runAndFix(
+        testFile,
+        sourceFile || undefined,
+        true,
+      );
+      if (fixes.length > 0) {
+        allFixes.set(testFile, fixes);
+      }
     }
+
+    console.log(
+      `\n📊 Summary: ${skipped} passing tests skipped, ${toFix} tests needed fixing`,
+    );
 
     return allFixes;
   }
@@ -415,9 +492,34 @@ ${this.generateFixSuggestions(result)}
     const files = await glob(patterns, {
       absolute: true,
       nodir: true,
+      ignore: ["**/*.backup.*"],
     });
 
     return files;
+  }
+
+  // Очистка кэша
+  public clearCache(): void {
+    this.testCache.clear();
+    this.saveCache();
+    console.log("🧹 Test cache cleared");
+  }
+
+  // Вывод статистики кэша
+  public getCacheStats(): { total: number; passed: number; failed: number } {
+    let passed = 0;
+    let failed = 0;
+
+    this.testCache.forEach((value) => {
+      if (value.success) passed++;
+      else failed++;
+    });
+
+    return {
+      total: this.testCache.size,
+      passed,
+      failed,
+    };
   }
 
   generateReport(results: Map<string, TestResult>): string {
@@ -462,14 +564,19 @@ ${this.generateFixSuggestions(result)}
     report += "║           TEST FIX REPORT                    ║\n";
     report += "╚════════════════════════════════════════════════╝\n\n";
 
+    let fixed = 0;
+    let failed = 0;
+
     for (const [file, attempts] of fixes) {
       const fileName = path.basename(file);
       const lastAttempt = attempts[attempts.length - 1];
 
       if (lastAttempt.success) {
         report += `✅ ${fileName} - Fixed after ${attempts.length} attempt(s)\n`;
+        fixed++;
       } else {
         report += `❌ ${fileName} - Failed to fix after ${attempts.length} attempt(s)\n`;
+        failed++;
       }
 
       for (const attempt of attempts) {
@@ -481,6 +588,11 @@ ${this.generateFixSuggestions(result)}
       }
       report += "\n";
     }
+
+    report += `📊 Fix Summary:\n`;
+    report += `   Fixed: ${fixed}\n`;
+    report += `   Failed to fix: ${failed}\n`;
+    report += `   Success rate: ${((fixed / (fixed + failed)) * 100).toFixed(2)}%\n`;
 
     return report;
   }

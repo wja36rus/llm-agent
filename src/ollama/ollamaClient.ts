@@ -33,6 +33,7 @@ export class OllamaClient {
 
   async listModels(): Promise<string[]> {
     const models = await this.ollama.list();
+
     return models.models.map((m) => m.name);
   }
 }

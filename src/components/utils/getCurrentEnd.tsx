@@ -1,7 +1,3 @@
-export const getCurrentEnd = (text: string | any) => {
-  return typeof text !== "string"
-    ? text
-    : text.length
-      ? text[text.length - 1]
-      : text;
+export const getCurrentEnd = (text: string) => {
+  return typeof text === "string" && text.length ? text[text.length - 1] : "";
 };

@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom';
-import React from 'react';
+import React from "react";
 import { render, screen, fireEvent } from '@testing-library/react';
 import { Button } from '../../../components/Button';
 
@@ -17,13 +17,21 @@ describe('Button Component', () => {
     expect(handleClick).toHaveBeenCalledTimes(1);
   });
 
-  it('renders button with disabled prop', () => {
-    render(<Button disabled>Disabled Button</Button>);
+  it('renders disabled button', () => {
+    render(<Button disabled>Click me</Button>);
     expect(screen.getByRole('button')).toBeDisabled();
   });
 
-  it('renders button with custom class name', () => {
-    render(<Button className="custom-class">Custom Class Button</Button>);
+  it('does not call onClick handler when clicked if disabled', () => {
+    const handleClick = jest.fn();
+    render(<Button onClick={handleClick} disabled>Click me</Button>);
+    
+    fireEvent.click(screen.getByRole('button'));
+    expect(handleClick).not.toHaveBeenCalled();
+  });
+
+  it('renders with custom class name', () => {
+    render(<Button className="custom-class">Click me</Button>);
     expect(screen.getByRole('button')).toHaveClass('btn custom-class');
   });
 });

@@ -200,3 +200,6 @@ $RECYCLE.BIN/
 # Linux
 *~
 .directory
+
+# Test cache
+.test-cache.json
