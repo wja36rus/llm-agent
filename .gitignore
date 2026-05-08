@@ -203,3 +203,12 @@ $RECYCLE.BIN/
 
 # Test cache
 .test-cache.json
+
+# Vitest coverage
+coverage/
+.vitest/
+__screenshots__/
+
+# Cache files
+.test-cache.json
+.vitest-cache/

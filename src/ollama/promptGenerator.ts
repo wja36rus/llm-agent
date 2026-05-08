@@ -1,13 +1,15 @@
-import { FunctionInfo } from "./analyzer";
+// src/ollama/promptGenerator.ts
+import { FunctionInfo } from './analyzer';
 
 export class PromptGenerator {
   private componentExample: string;
   private utilityExample: string;
 
-  constructor(examplePath?: string) {
-    // Пример для React компонента
+  constructor() {
     this.componentExample = `
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import '@testing-library/jest-dom/vitest';
 import { Button } from './Button';
 
 describe('Button Component', () => {
@@ -17,7 +19,7 @@ describe('Button Component', () => {
   });
 
   it('calls onClick handler when clicked', () => {
-    const handleClick = jest.fn();
+    const handleClick = vi.fn();
     render(<Button onClick={handleClick}>Click me</Button>);
     
     fireEvent.click(screen.getByRole('button'));
@@ -26,8 +28,8 @@ describe('Button Component', () => {
 });
     `;
 
-    // Пример для утилиты
     this.utilityExample = `
+import { describe, it, expect } from 'vitest';
 import { getCurrentEnd } from './utils';
 
 describe('getCurrentEnd', () => {
@@ -39,192 +41,185 @@ describe('getCurrentEnd', () => {
   it('handles empty string', () => {
     expect(getCurrentEnd('')).toBe(undefined);
   });
-
-  it('handles single character string', () => {
-    expect(getCurrentEnd('a')).toBe('a');
-  });
-
-  it('handles special characters', () => {
-    expect(getCurrentEnd('hello!')).toBe('!');
-    expect(getCurrentEnd('привет')).toBe('т');
-  });
 });
     `;
   }
 
   generatePrompt(funcInfo: FunctionInfo, code: string): string {
-    if (funcInfo.type === "component") {
+    if (funcInfo.type === 'component') {
       return this.generateComponentPrompt(funcInfo, code);
     } else {
       return this.generateUtilityPrompt(funcInfo, code);
     }
   }
 
-  private generateComponentPrompt(
-    funcInfo: FunctionInfo,
-    code: string,
-  ): string {
-    const paramsStr = funcInfo.params
-      .map(
-        (p) =>
-          `${p.name}${p.optional ? "?" : ""}${p.type ? ": " + p.type : ""}`,
-      )
-      .join(", ");
+  private generateComponentPrompt(funcInfo: FunctionInfo, code: string): string {
+    // Безопасная проверка props
+    const hasProps = funcInfo.props && Array.isArray(funcInfo.props) && funcInfo.props.length > 0;
+    const callbackProps = hasProps && funcInfo.props ? funcInfo.props.filter((p: string) => p.startsWith('on')) : [];
 
-    return `Ты — Senior Frontend Engineer, специализирующийся на тестировании React компонентов.
+    const paramsStr =
+      funcInfo.params && funcInfo.params.length > 0
+        ? funcInfo.params.map((p) => `${p.name}${p.optional ? '?' : ''}${p.type ? ': ' + p.type : ''}`).join(', ')
+        : 'none';
 
-Твоя задача: написать тесты для React компонента с использованием Jest и React Testing Library.
+    const specificPractices = this.generateComponentBestPractices(funcInfo);
 
-ВАЖНЫЕ ПРАВИЛА:
-1. Всегда используй screen.getByRole для поиска элементов
-2. Всегда используй fireEvent или userEvent для симуляции действий
-3. Никогда не используй enzyme
-4. Всегда мокай функции с помощью jest.fn()
-5. Используй describe и it для организации тестов
+    const interactionTests =
+      callbackProps.length > 0
+        ? callbackProps.map((p: string) => `- Test ${p} callback is called with correct arguments`).join('\n')
+        : '- Test user interactions if any';
 
-ВОТ ПРИМЕР ТОГО, КАК ДОЛЖНЫ ВЫГЛЯДЕТЬ ТЕСТЫ:
-${this.componentExample}
+    const hooksList = funcInfo.hooks && funcInfo.hooks.length > 0 ? funcInfo.hooks.join(', ') : 'none';
+    const jsxElementsList =
+      funcInfo.jsxElements && funcInfo.jsxElements.length > 0 ? funcInfo.jsxElements.join(', ') : 'none';
 
-ИНФОРМАЦИЯ О КОМПОНЕНТЕ:
-Имя: ${funcInfo.name}
-Тип: ${funcInfo.type}
-Параметры: ${paramsStr || "нет"}
-Возвращает: ${funcInfo.returnType || "unknown"}
-Использует хуки: ${funcInfo.hooks.join(", ") || "нет"}
-JSX элементы: ${funcInfo.jsxElements.join(", ") || "нет"}
-Асинхронный: ${funcInfo.isAsync ? "да" : "нет"}
-${funcInfo.description ? `Описание: ${funcInfo.description}` : ""}
+    return `You are an expert React testing engineer using Vitest and Testing Library.
 
-КОД КОМПОНЕНТА:
+## CONTEXT
+Component: ${funcInfo.name}
+Type: ${funcInfo.type}
+Props: ${paramsStr}
+Returns: ${funcInfo.returnType || 'JSX.Element'}
+Hooks used: ${hooksList}
+JSX elements: ${jsxElementsList}
+Async: ${funcInfo.isAsync ? 'yes' : 'no'}
+
+## TEST REQUIREMENTS
+
+### 1. Structure
+- Use describe('${funcInfo.name}', () => { ... })
+- Group tests by behavior (rendering, interactions, edge cases)
+
+### 2. Rendering Tests
+- Basic render with minimal required props
+- Render with different prop combinations
+- Conditional rendering verification
+
+### 3. Interaction Tests
+${interactionTests}
+
+### 4. Edge Cases
+- Test with undefined/null props
+- Test with empty strings or arrays
+- Test disabled/loading states
+
+### 5. Async Behavior (if applicable)
+${
+  funcInfo.isAsync
+    ? `- Test loading state
+- Test error state with proper error message
+- Test successful data fetch`
+    : '- N/A'
+}
+
+### 6. Specific Recommendations for This Component:
+${specificPractices || '- Follow standard testing patterns'}
+
+## CODE TO TEST:
 \`\`\`tsx
 ${code}
 \`\`\`
 
-ТРЕБОВАНИЯ К ТЕСТАМ:
-1. Проверь, что компонент рендерится без ошибок
-2. Протестируй все пропсы, которые принимает компонент
-3. Если есть колбэки (onClick, onChange и т.д.) — проверь их вызовы
-4. Проверь состояния загрузки, disabled, ошибок
-5. Протестируй условный рендеринг, если он есть
+## REQUIREMENTS FOR RESPONSE:
+1. Use Vitest syntax: import { describe, it, expect, vi } from 'vitest'
+2. Use Testing Library: import { render, screen, fireEvent } from '@testing-library/react'
+3. Use jest-dom matchers: import '@testing-library/jest-dom/vitest'
+4. Follow AAA pattern (Arrange, Act, Assert)
+5. Use vi.fn() for mocks
+6. Use screen.getByRole with name option when possible
 
-Сгенерируй ТОЛЬКО код теста без комментариев. Используй формат .test.tsx.
+Generate ONLY the test code. No explanations before or after.`;
+  }
 
-Код теста:`;
+  private generateComponentBestPractices(componentInfo: FunctionInfo): string {
+    const practices: string[] = [];
+
+    // Безопасная проверка hooks
+    const hooks = componentInfo.hooks || [];
+    if (hooks.includes('useEffect')) {
+      practices.push('- Test useEffect cleanup');
+      practices.push('- Test dependency changes trigger effect');
+    }
+
+    if (hooks.includes('useState')) {
+      practices.push('- Test state updates correctly');
+    }
+
+    // Проверяем callback props через params (более надежно)
+    const params = componentInfo.params || [];
+    const hasCallbackProps = params.some((p) => p.name && p.name.startsWith('on'));
+    if (hasCallbackProps) {
+      practices.push('- Test all callback props are called with correct arguments');
+    }
+
+    if (componentInfo.isAsync) {
+      practices.push('- Test loading states');
+      practices.push('- Test error states');
+      practices.push('- Test successful data loading');
+    }
+
+    // Безопасная проверка jsxElements
+    const jsxElements = componentInfo.jsxElements || [];
+    if (jsxElements.includes('form')) {
+      practices.push('- Test form submission');
+      practices.push('- Test validation errors');
+    }
+
+    return practices.join('\n');
   }
 
   private generateUtilityPrompt(funcInfo: FunctionInfo, code: string): string {
-    const paramsStr = funcInfo.params
-      .map(
-        (p) =>
-          `${p.name}${p.optional ? "?" : ""}${p.type ? ": " + p.type : ""}`,
-      )
-      .join(", ");
+    const paramsStr =
+      funcInfo.params && funcInfo.params.length > 0
+        ? funcInfo.params.map((p) => `${p.name}${p.optional ? '?' : ''}${p.type ? ': ' + p.type : ''}`).join(', ')
+        : 'none';
 
-    // Генерируем тест-кейсы на основе параметров
-    const testCases = this.generateTestCases(funcInfo);
+    return `You are an expert in testing TypeScript/JavaScript utilities with Vitest.
 
-    return `Ты — Senior Frontend Engineer, специализирующийся на тестировании утилит и хелперов.
+## FUNCTION TO TEST
+Name: ${funcInfo.name}
+Parameters: ${paramsStr}
+Returns: ${funcInfo.returnType || 'unknown'}
+Async: ${funcInfo.isAsync ? 'yes' : 'no'}
 
-Твоя задача: написать тесты для утилиты с использованием Jest.
+## TEST REQUIREMENTS
 
-ВАЖНЫЕ ПРАВИЛА:
-1. Используй чистые функции и детерминированные тесты
-2. Тестируй граничные случаи (empty, null, undefined)
-3. Используй describe для группировки связанных тестов
-4. Каждый it должен тестировать один конкретный случай
-5. Используй expect с соответствующими matchers
+### 1. Normal Cases
+- Test with typical valid inputs
+- Verify correct return values
 
-ВОТ ПРИМЕР ТОГО, КАК ДОЛЖНЫ ВЫГЛЯДЕТЬ ТЕСТЫ ДЛЯ УТИЛИТ:
-${this.utilityExample}
+### 2. Edge Cases
+- Empty strings: ''
+- Zero and negative numbers: 0, -1
+- Empty arrays: []
+- Empty objects: {}
+- null and undefined
 
-ИНФОРМАЦИЯ О ФУНКЦИИ:
-Имя: ${funcInfo.name}
-Тип: ${funcInfo.type}
-Параметры: ${paramsStr || "нет"}
-Возвращает: ${funcInfo.returnType || "unknown"}
-Асинхронная: ${funcInfo.isAsync ? "да" : "нет"}
-Экспортируется: да
-${funcInfo.description ? `Описание: ${funcInfo.description}` : ""}
+### 3. Error Cases
+- Invalid input types
+- Missing required parameters
 
-КОД ФУНКЦИИ:
+### 4. Async Functions (if applicable)
+${
+  funcInfo.isAsync
+    ? `- Test successful resolution
+- Test rejection with proper error`
+    : '- N/A'
+}
+
+## CODE TO TEST:
 \`\`\`typescript
 ${code}
 \`\`\`
 
-РЕКОМЕНДУЕМЫЕ ТЕСТ-КЕЙСЫ:
-${testCases}
+## RESPONSE FORMAT:
+Generate ONLY the test code with:
+1. Proper imports from 'vitest'
+2. describe block named '${funcInfo.name}'
+3. Multiple it() blocks for each test case
+4. Descriptive test names
 
-ТРЕБОВАНИЯ К ТЕСТАМ:
-1. Протестируй нормальное поведение с корректными входными данными
-2. Протестируй граничные случаи (пустые значения, null, undefined)
-3. Если функция асинхронная — используй async/await
-4. Проверь типы возвращаемых значений
-5. Добавь тесты на исключения, если функция может их выбрасывать
-
-Сгенерируй ТОЛЬКО код теста без комментариев. Используй формат .test.ts или .test.ts.
-
-Код теста:`;
-  }
-
-  private generateTestCases(funcInfo: FunctionInfo): string {
-    const cases: string[] = [];
-
-    if (funcInfo.params.length === 0) {
-      cases.push(
-        "- Проверить, что функция возвращает ожидаемое значение без параметров",
-      );
-    }
-
-    for (const param of funcInfo.params) {
-      if (param.type === "string") {
-        cases.push(
-          `- Протестировать с нормальной строкой для параметра ${param.name}`,
-        );
-        cases.push(
-          `- Протестировать с пустой строкой для параметра ${param.name}`,
-        );
-        if (!param.optional) {
-          cases.push(
-            `- Убедиться, что функция выбрасывает ошибку без обязательного параметра ${param.name}`,
-          );
-        }
-      } else if (param.type === "number") {
-        cases.push(
-          `- Протестировать с положительным числом для параметра ${param.name}`,
-        );
-        cases.push(
-          `- Протестировать с отрицательным числом для параметра ${param.name}`,
-        );
-        cases.push(`- Протестировать с нулем для параметра ${param.name}`);
-      } else if (param.type === "boolean") {
-        cases.push(`- Протестировать с true для параметра ${param.name}`);
-        cases.push(`- Протестировать с false для параметра ${param.name}`);
-      } else if (param.type?.includes("[]")) {
-        cases.push(
-          `- Протестировать с пустым массивом для параметра ${param.name}`,
-        );
-        cases.push(
-          `- Протестировать с массивом из одного элемента для параметра ${param.name}`,
-        );
-        cases.push(
-          `- Протестировать с большим массивом для параметра ${param.name}`,
-        );
-      }
-    }
-
-    if (funcInfo.isAsync) {
-      cases.push("- Использовать async/await для асинхронной функции");
-      cases.push("- Проверить обработку ошибок с try/catch или .rejects");
-    }
-
-    if (funcInfo.returnType === "string") {
-      cases.push("- Проверить, что возвращаемое значение является строкой");
-    } else if (funcInfo.returnType === "number") {
-      cases.push("- Проверить, что возвращаемое значение является числом");
-    }
-
-    return cases.length > 0
-      ? cases.join("\n")
-      : "- Стандартные тесты для функции";
+Only output the test code, nothing else.`;
   }
 }

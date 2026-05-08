@@ -35,13 +35,24 @@ export class TestRunner {
   private testResults: Map<string, TestResult> = new Map();
   private testCache: Map<
     string,
-    { success: boolean; timestamp: number; testPath: string }
+    {
+      success: boolean;
+      timestamp: number;
+      testPath: string;
+      testPlacement?: string;
+    }
   > = new Map();
   private cacheFile: string = ".test-cache.json";
+  private testPlacement: "separate" | "adjacent";
 
-  constructor(model: string = "qwen2.5-coder:7b", maxFixAttempts: number = 3) {
+  constructor(
+    model: string = "qwen2.5-coder:7b",
+    maxFixAttempts: number = 3,
+    testPlacement: "separate" | "adjacent" = "separate",
+  ) {
     this.ollama = new OllamaClient(model);
     this.maxFixAttempts = maxFixAttempts;
+    this.testPlacement = testPlacement;
     this.loadCache();
   }
 
@@ -70,18 +81,30 @@ export class TestRunner {
     }
   }
 
+  // Получение ключа кэша на основе пути к тесту и стратегии размещения
+  private getCacheKey(testFilePath: string): string {
+    // Используем абсолютный путь и стратегию размещения как часть ключа
+    const absolutePath = path.resolve(testFilePath);
+    return `${absolutePath}|${this.testPlacement}`;
+  }
+
   // Проверка, нужно ли запускать тест
   public shouldRunTest(testFilePath: string, force: boolean = false): boolean {
     if (force) return true;
 
-    const cached = this.testCache.get(testFilePath);
+    const cacheKey = this.getCacheKey(testFilePath);
+    const cached = this.testCache.get(cacheKey);
+
     if (!cached) return true;
 
     // Проверяем время последнего успешного прохода (24 часа)
     const oneDay = 24 * 60 * 60 * 1000;
     const isRecent = Date.now() - cached.timestamp < oneDay;
 
-    return !(cached.success && isRecent);
+    // Также проверяем, соответствует ли стратегия размещения
+    const placementMatch = cached.testPlacement === this.testPlacement;
+
+    return !(cached.success && isRecent && placementMatch);
   }
 
   // Проверка, существует ли тест и проходит ли он
@@ -91,11 +114,15 @@ export class TestRunner {
   ): Promise<boolean> {
     // Проверяем кэш
     if (!forceCheck) {
-      const cached = this.testCache.get(testFilePath);
+      const cacheKey = this.getCacheKey(testFilePath);
+      const cached = this.testCache.get(cacheKey);
+
       if (cached && cached.success) {
         const oneDay = 24 * 60 * 60 * 1000;
         const isRecent = Date.now() - cached.timestamp < oneDay;
-        if (isRecent) {
+        const placementMatch = cached.testPlacement === this.testPlacement;
+
+        if (isRecent && placementMatch) {
           return true;
         }
       }
@@ -115,9 +142,11 @@ export class TestRunner {
     testFilePath: string,
     force: boolean = false,
   ): Promise<TestResult> {
+    const cacheKey = this.getCacheKey(testFilePath);
+
     // Проверяем кэш
     if (!force && !this.shouldRunTest(testFilePath, false)) {
-      const cached = this.testCache.get(testFilePath);
+      const cached = this.testCache.get(cacheKey);
       if (cached && cached.success) {
         console.log(
           `   ⏭️  Skipping test (passed recently): ${path.basename(testFilePath)}`,
@@ -149,7 +178,7 @@ export class TestRunner {
 
     try {
       const { stdout, stderr } = await execAsync(
-        `npx jest "${testFilePath}" --no-coverage --colors --passWithNoTests`,
+        `npx vitest run "${testFilePath}" --reporter=verbose`,
         {
           env: { ...process.env, CI: "true" },
           cwd: process.cwd(),
@@ -166,11 +195,12 @@ export class TestRunner {
         failedTests: [],
       };
 
-      // Сохраняем в кэш
-      this.testCache.set(testFilePath, {
+      // Сохраняем в кэш с учетом стратегии размещения
+      this.testCache.set(cacheKey, {
         success: true,
         timestamp: Date.now(),
         testPath: testFilePath,
+        testPlacement: this.testPlacement,
       });
       this.saveCache();
 
@@ -193,11 +223,12 @@ export class TestRunner {
         duration,
       };
 
-      // Сохраняем провал в кэш
-      this.testCache.set(testFilePath, {
+      // Сохраняем провал в кэш с учетом стратегии размещения
+      this.testCache.set(cacheKey, {
         success: false,
         timestamp: Date.now(),
         testPath: testFilePath,
+        testPlacement: this.testPlacement,
       });
       this.saveCache();
 
@@ -207,6 +238,38 @@ export class TestRunner {
       this.testResults.set(testFilePath, result);
       return result;
     }
+  }
+
+  private parseFailedTests(output: string, filePath: string): FailedTest[] {
+    const failedTests: FailedTest[] = [];
+
+    // Парсинг для Vitest
+    const testPattern = /❯\s+(.*?)\n\s+×\s+(.*?)\n\s+→\s+(.*?)\n/gs;
+    let match;
+
+    while ((match = testPattern.exec(output)) !== null) {
+      failedTests.push({
+        name: match[2].trim(),
+        error: match[3].trim(),
+        stackTrace: match[1].trim(),
+        filePath,
+      });
+    }
+
+    // Альтернативный парсинг
+    if (failedTests.length === 0) {
+      const simplePattern = /FAIL\s+.*?\n\s+(.*?)\n\s+Error:\s+(.*?)\n/gs;
+      while ((match = simplePattern.exec(output)) !== null) {
+        failedTests.push({
+          name: match[1].trim(),
+          error: match[2].trim(),
+          stackTrace: undefined,
+          filePath,
+        });
+      }
+    }
+
+    return failedTests;
   }
 
   async runAndFix(
@@ -265,10 +328,12 @@ export class TestRunner {
       if (newResult.success) {
         console.log(`   ✅ Test fixed successfully in attempt ${i}!`);
         // Обновляем кэш с успешным результатом
-        this.testCache.set(testFilePath, {
+        const cacheKey = this.getCacheKey(testFilePath);
+        this.testCache.set(cacheKey, {
           success: true,
           timestamp: Date.now(),
           testPath: testFilePath,
+          testPlacement: this.testPlacement,
         });
         this.saveCache();
         break;
@@ -311,16 +376,12 @@ Stack trace: ${test.stackTrace || "N/A"}
     let originalCode = "";
     if (originalCodePath && (await fs.pathExists(originalCodePath))) {
       originalCode = await fs.readFile(originalCodePath, "utf-8");
-      originalCode = `\nОРИГИНАЛЬНЫЙ КОД КОМПОНЕНТА/УТИЛИТЫ:
-\`\`\`typescript
-${originalCode}
-\`\`\`
-`;
+      originalCode = `\nОРИГИНАЛЬНЫЙ КОД:\n\`\`\`typescript\n${originalCode}\n\`\`\`\n`;
     }
 
-    const prompt = `Ты — Senior QA Engineer, специализирующийся на исправлении тестов.
+    const prompt = `Ты — Senior QA Engineer, специализирующийся на исправлении тестов для Vitest.
 
-Твоя задача: исправить неработающие тесты, чтобы они проходили успешно.
+Твоя задача: исправить неработающие тесты.
 
 ПРОБЛЕМНЫЙ ТЕСТ:
 \`\`\`typescript
@@ -336,69 +397,27 @@ ${result.output.slice(0, 2000)}
 ${originalCode}
 
 ПРАВИЛА ИСПРАВЛЕНИЯ:
-1. Не меняй логику тестов, только исправляй ошибки
-2. Добавь недостающие импорты (например, '@testing-library/jest-dom')
-3. Исправь неправильные селекторы (getByRole, getByText, etc.)
-4. Добавь моки если необходимо
-5. Убедись, что тесты соответствуют API компонента
+1. Используй синтаксис Vitest (vi вместо jest)
+2. Добавь импорт: import { describe, it, expect, vi } from 'vitest'
+3. Добавь import '@testing-library/jest-dom/vitest'
+4. Замени jest.fn() на vi.fn()
+5. Замени jest.mock на vi.mock
 
-Сгенерируй ИСПРАВЛЕННУЮ ВЕРСИЮ теста. Верни ТОЛЬКО код теста без комментариев.
+Сгенерируй ИСПРАВЛЕННУЮ ВЕРСИЮ теста.
 
 Исправленный тест:`;
 
     const response = await this.ollama.generate(prompt);
-    const fixedCode = this.extractCodeFromResponse(response);
-    return fixedCode;
-  }
-
-  private parseFailedTests(output: string, filePath: string): FailedTest[] {
-    const failedTests: FailedTest[] = [];
-
-    // Регулярное выражение для парсинга failed тестов из Jest вывода
-    const testPattern = /●\s+(.*?)\n\s+(.*?)\n(?:\s+at\s+(.*?)\n)?/gs;
-    let match;
-
-    while ((match = testPattern.exec(output)) !== null) {
-      failedTests.push({
-        name: match[1].trim(),
-        error: match[2].trim(),
-        stackTrace: match[3]?.trim(),
-        filePath,
-      });
-    }
-
-    // Если не нашли по первому паттерну, пробуем другой
-    if (failedTests.length === 0) {
-      const simplePattern = /✕\s+(.*?)\s+\(.*?\)\n\s+(.*?)\n/gs;
-      while ((match = simplePattern.exec(output)) !== null) {
-        failedTests.push({
-          name: match[1].trim(),
-          error: match[2].trim(),
-          stackTrace: undefined,
-          filePath,
-        });
-      }
-    }
-
-    return failedTests;
+    return this.extractCodeFromResponse(response);
   }
 
   private extractCodeFromResponse(response: string): string {
-    // Извлекаем код из маркдаун блока
     const codeBlockRegex =
       /```(?:tsx|jsx|typescript|javascript|react)?\n([\s\S]*?)```/;
     const match = response.match(codeBlockRegex);
 
     if (match && match[1]) {
       return match[1].trim();
-    }
-
-    // Если нет блоков кода, пробуем найти describe или it
-    const testBlockRegex = /(import.*?[\s\S]*?describe\([\s\S]*?\);?)/;
-    const testMatch = response.match(testBlockRegex);
-
-    if (testMatch) {
-      return testMatch[1].trim();
     }
 
     return response.trim();
@@ -446,14 +465,27 @@ ${originalCode}
       // Пытаемся найти исходный файл компонента
       let sourceFile = "";
       if (sourceDir) {
-        const baseName = path
-          .basename(testFile)
+        // Определяем возможные имена исходных файлов в зависимости от стратегии размещения
+        const testFileName = path.basename(testFile);
+        const baseName = testFileName
           .replace(".test.ts", "")
           .replace(".test.tsx", "");
+
         const possibleExtensions = [".tsx", ".ts", ".jsx", ".js"];
 
         for (const ext of possibleExtensions) {
-          const candidate = path.join(sourceDir, `${baseName}${ext}`);
+          let candidate: string;
+
+          if (this.testPlacement === "adjacent") {
+            // При adjacent стратегии тест рядом с исходным файлом
+            candidate = testFile.replace(/\.test\.(tsx|ts)$/, ext);
+          } else {
+            // При separate стратегии нужно подняться на уровень выше из __tests__
+            const testDir = path.dirname(testFile);
+            const parentDir = path.dirname(testDir);
+            candidate = path.join(parentDir, `${baseName}${ext}`);
+          }
+
           if (await fs.pathExists(candidate)) {
             sourceFile = candidate;
             break;
@@ -480,19 +512,26 @@ ${originalCode}
 
   private async findTestFiles(testDir: string): Promise<string[]> {
     const { glob } = await import("glob");
-    const patterns = [
-      `${testDir}/**/*.test.ts`,
-      `${testDir}/**/*.test.tsx`,
-      `${testDir}/**/*.test.js`,
-      `${testDir}/**/*.test.jsx`,
-      `${testDir}/**/__tests__/**/*.ts`,
-      `${testDir}/**/__tests__/**/*.tsx`,
-    ];
+
+    let patterns: string[];
+
+    if (this.testPlacement === "adjacent") {
+      // При adjacent стратегии ищем тесты рядом с исходными файлами
+      patterns = [`${testDir}/**/*.test.ts`, `${testDir}/**/*.test.tsx`];
+    } else {
+      // При separate стратегии ищем тесты в папках __tests__
+      patterns = [
+        `${testDir}/**/__tests__/**/*.test.ts`,
+        `${testDir}/**/__tests__/**/*.test.tsx`,
+        `${testDir}/**/*.test.ts`,
+        `${testDir}/**/*.test.tsx`,
+      ];
+    }
 
     const files = await glob(patterns, {
       absolute: true,
       nodir: true,
-      ignore: ["**/*.backup.*"],
+      ignore: ["**/*.backup.*", "**/node_modules/**"],
     });
 
     return files;
@@ -505,26 +544,62 @@ ${originalCode}
     console.log("🧹 Test cache cleared");
   }
 
+  // Очистка кэша для конкретной стратегии
+  public clearCacheForPlacement(placement: "separate" | "adjacent"): void {
+    const toDelete: string[] = [];
+
+    this.testCache.forEach((value, key) => {
+      if (value.testPlacement === placement) {
+        toDelete.push(key);
+      }
+    });
+
+    toDelete.forEach((key) => this.testCache.delete(key));
+    this.saveCache();
+    console.log(
+      `🧹 Cleared cache for ${placement} placement strategy (${toDelete.length} entries)`,
+    );
+  }
+
   // Вывод статистики кэша
-  public getCacheStats(): { total: number; passed: number; failed: number } {
+  public getCacheStats(): {
+    total: number;
+    passed: number;
+    failed: number;
+    byPlacement: Record<string, { passed: number; failed: number }>;
+  } {
     let passed = 0;
     let failed = 0;
+    const byPlacement: Record<string, { passed: number; failed: number }> = {
+      separate: { passed: 0, failed: 0 },
+      adjacent: { passed: 0, failed: 0 },
+    };
 
     this.testCache.forEach((value) => {
-      if (value.success) passed++;
-      else failed++;
+      if (value.success) {
+        passed++;
+        if (value.testPlacement) {
+          byPlacement[value.testPlacement].passed++;
+        }
+      } else {
+        failed++;
+        if (value.testPlacement) {
+          byPlacement[value.testPlacement].failed++;
+        }
+      }
     });
 
     return {
       total: this.testCache.size,
       passed,
       failed,
+      byPlacement,
     };
   }
 
   generateReport(results: Map<string, TestResult>): string {
     let report = "\n╔════════════════════════════════════════════════╗\n";
-    report += "║           TEST RUN REPORT                      ║\n";
+    report += "║           TEST RUN REPORT (Vitest)              ║\n";
     report += "╚════════════════════════════════════════════════╝\n\n";
 
     let passed = 0;
@@ -555,13 +630,14 @@ ${originalCode}
     report += `   Failed: ${failed}\n`;
     report += `   Success rate: ${((passed / results.size) * 100).toFixed(2)}%\n`;
     report += `   Total duration: ${totalDuration}ms\n`;
+    report += `   Test placement: ${this.testPlacement === "adjacent" ? "adjacent (next to source)" : "separate (__tests__ folder)"}\n`;
 
     return report;
   }
 
   async generateFixReport(fixes: Map<string, FixAttempt[]>): Promise<string> {
     let report = "\n╔════════════════════════════════════════════════╗\n";
-    report += "║           TEST FIX REPORT                    ║\n";
+    report += "║           TEST FIX REPORT (Vitest)             ║\n";
     report += "╚════════════════════════════════════════════════╝\n\n";
 
     let fixed = 0;
@@ -578,18 +654,9 @@ ${originalCode}
         report += `❌ ${fileName} - Failed to fix after ${attempts.length} attempt(s)\n`;
         failed++;
       }
-
-      for (const attempt of attempts) {
-        const status = attempt.success ? "✅" : "❌";
-        report += `   ${status} Attempt ${attempt.attemptNumber}: ${attempt.success ? "SUCCESS" : "FAILED"}\n`;
-        if (attempt.error && !attempt.success) {
-          report += `      Error: ${attempt.error.slice(0, 100)}...\n`;
-        }
-      }
-      report += "\n";
     }
 
-    report += `📊 Fix Summary:\n`;
+    report += `\n📊 Fix Summary:\n`;
     report += `   Fixed: ${fixed}\n`;
     report += `   Failed to fix: ${failed}\n`;
     report += `   Success rate: ${((fixed / (fixed + failed)) * 100).toFixed(2)}%\n`;

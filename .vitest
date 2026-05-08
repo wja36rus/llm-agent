@@ -1,0 +1,13 @@
+// vitest.workspace.ts
+import { defineWorkspace } from "vitest/config";
+
+export default defineWorkspace([
+  {
+    test: {
+      name: "unit",
+      include: ["src/**/*.test.{ts,tsx}"],
+      environment: "jsdom",
+      setupFiles: ["./src/setupTests.ts"],
+    },
+  },
+]);

@@ -1,0 +1,21 @@
+{
+  "model": "qwen2.5-coder:7b",
+  "testPlacement": "adjacent",
+  "autoFix": true,
+  "skipPassingTests": true,
+  "maxFixAttempts": 3,
+  "quality": {
+    "validateTests": true,
+    "requireDescriptiveNames": true,
+    "requireArrangeActAssert": false,
+    "maxAssertionsPerTest": 3,
+    "preferUserEvent": true
+  },
+  "coverage": {
+    "statements": 80,
+    "branches": 70,
+    "functions": 80,
+    "lines": 80
+  },
+  "exclude": ["**/node_modules/**", "**/*.d.ts", "**/index.tsx"]
+}
